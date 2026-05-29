@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spectral Explorer — Conservation Spectral Analysis</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --bg: #0a0a0f; --surface: #12121a; --surface2: #1a1a28;
+    --border: #2a2a3a; --text: #e0e0e8; --text2: #8888a0;
+    --accent: #6c5ce7; --accent2: #a29bfe; --green: #00b894;
+    --red: #e74c3c; --yellow: #fdcb6e; --blue: #74b9ff;
+  }
+  body { background: var(--bg); color: var(--text); font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+  
+  header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+  header h1 { font-size: 18px; font-weight: 600; background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  header .subtitle { color: var(--text2); font-size: 12px; margin-left: 12px; }
+  
+  .main { display: flex; flex: 1; overflow: hidden; }
+  
+  /* Sidebar */
+  .sidebar { width: 280px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow-y: auto; flex-shrink: 0; }
+  .sidebar-section { padding: 16px; border-bottom: 1px solid var(--border); }
+  .sidebar-section h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--text2); margin-bottom: 10px; }
+  
+  select, button { font-family: inherit; font-size: 12px; }
+  select { width: 100%; background: var(--surface2); color: var(--text); border: 1px solid var(--border); padding: 8px 10px; border-radius: 6px; cursor: pointer; outline: none; }
+  select:focus { border-color: var(--accent); }
+  
+  .btn { display: inline-block; padding: 7px 14px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); cursor: pointer; font-size: 12px; transition: all 0.15s; }
+  .btn:hover { border-color: var(--accent); background: var(--accent); color: #fff; }
+  .btn-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .btn-row .btn { flex: 1; text-align: center; min-width: 70px; }
+  .btn-danger { border-color: var(--red); color: var(--red); }
+  .btn-danger:hover { background: var(--red); color: #fff; }
+  
+  /* Canvas area */
+  .canvas-wrap { flex: 1; position: relative; background: var(--bg); }
+  canvas#graph { display: block; width: 100%; height: 100%; cursor: crosshair; }
+  
+  /* Info panels */
+  .info-bar { position: absolute; top: 12px; right: 12px; width: 300px; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+  .panel { background: rgba(18,18,26,0.92); border: 1px solid var(--border); border-radius: 10px; padding: 14px; backdrop-filter: blur(12px); pointer-events: auto; }
+  .panel h4 { font-size: 10px; text-transform: uppercase; letter-spacing: 1.2px; color: var(--text2); margin-bottom: 8px; }
+  
+  .conservation-box { text-align: center; }
+  .conservation-ratio { font-size: 48px; font-weight: 700; line-height: 1; }
+  .conservation-label { font-size: 11px; color: var(--text2); margin-top: 4px; }
+  .conservation-bar { height: 4px; background: var(--surface2); border-radius: 2px; margin-top: 8px; overflow: hidden; }
+  .conservation-fill { height: 100%; border-radius: 2px; transition: width 0.3s, background 0.3s; }
+  
+  .eigen-list { display: flex; flex-direction: column; gap: 3px; max-height: 200px; overflow-y: auto; }
+  .eigen-row { display: flex; justify-content: space-between; font-size: 12px; padding: 2px 0; }
+  .eigen-idx { color: var(--text2); }
+  .eigen-val { font-weight: 600; }
+  
+  .fiedler-display { display: flex; flex-wrap: wrap; gap: 4px; }
+  .fiedler-node { padding: 3px 8px; border-radius: 4px; font-size: 11px; background: var(--surface2); }
+  
+  /* Mode indicator */
+  .mode-indicator { position: absolute; bottom: 12px; left: 12px; background: rgba(18,18,26,0.92); border: 1px solid var(--border); border-radius: 8px; padding: 8px 14px; font-size: 12px; backdrop-filter: blur(12px); }
+  .mode-indicator span { color: var(--accent2); font-weight: 600; }
+  
+  /* Tooltip */
+  .tooltip { position: absolute; background: rgba(18,18,26,0.95); border: 1px solid var(--accent); border-radius: 6px; padding: 6px 10px; font-size: 11px; pointer-events: none; display: none; z-index: 10; }
+  
+  /* Graph info */
+  .graph-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .stat { background: var(--surface2); border-radius: 6px; padding: 8px; text-align: center; }
+  .stat-value { font-size: 20px; font-weight: 700; color: var(--accent2); }
+  .stat-label { font-size: 9px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.8px; margin-top: 2px; }
+  
+  /* Instructions */
+  .instructions { font-size: 11px; color: var(--text2); line-height: 1.6; }
+  .instructions kbd { background: var(--surface2); border: 1px solid var(--border); border-radius: 3px; padding: 1px 5px; font-size: 10px; }
+  
+  /* Animation indicator */
+  .anim-indicator { position: absolute; top: 12px; left: 12px; background: rgba(18,18,26,0.92); border: 1px solid var(--border); border-radius: 8px; padding: 8px 14px; font-size: 12px; backdrop-filter: blur(12px); display: none; }
+  .anim-indicator.active { display: block; border-color: var(--yellow); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex;align-items:baseline;">
+    <h1>⟡ Spectral Explorer</h1>
+    <span class="subtitle">conservation spectral analysis</span>
+  </div>
+  <div style="font-size:11px;color:var(--text2);">superinstance.ai</div>
+</header>
+
+<div class="main">
+  <div class="sidebar">
+    <div class="sidebar-section">
+      <h3>Domain Presets</h3>
+      <select id="presetSelect">
+        <option value="">— Custom Graph —</option>
+        <optgroup label="Mathematical">
+          <option value="complete">Complete Graph Kₙ</option>
+          <option value="path">Path Graph Pₙ</option>
+          <option value="cycle">Cycle Graph Cₙ</option>
+          <option value="barbell">Barbell Graph</option>
+          <option value="random">Random Graph</option>
+          <option value="star">Star Graph</option>
+          <option value="grid">Grid Graph</option>
+        </optgroup>
+        <optgroup label="Real-World Networks">
+          <option value="roman">Roman Empire Trade Routes</option>
+          <option value="jazz">Jazz ii-V-I Progression</option>
+          <option value="foodweb">Food Web (Keystone Species)</option>
+          <option value="criminal">Criminal Network (Hierarchical)</option>
+        </optgroup>
+      </select>
+    </div>
+    
+    <div class="sidebar-section">
+      <h3>Graph Size</h3>
+      <select id="sizeSelect">
+        <option value="4">4 nodes</option>
+        <option value="6" selected>6 nodes</option>
+        <option value="8">8 nodes</option>
+        <option value="10">10 nodes</option>
+        <option value="12">12 nodes</option>
+      </select>
+    </div>
+    
+    <div class="sidebar-section">
+      <h3>Actions</h3>
+      <div class="btn-row" style="margin-bottom:8px;">
+        <button class="btn" onclick="setMode('node')">+ Node</button>
+        <button class="btn" onclick="setMode('edge')">+ Edge</button>
+        <button class="btn btn-danger" onclick="setMode('delete')">✕ Del</button>
+      </div>
+      <div class="btn-row">
+        <button class="btn" onclick="clearGraph()">Clear</button>
+        <button class="btn" onclick="animateRandomEdge()">Animate</button>
+      </div>
+    </div>
+    
+    <div class="sidebar-section">
+      <h3>Graph Stats</h3>
+      <div class="graph-stats">
+        <div class="stat"><div class="stat-value" id="statNodes">0</div><div class="stat-label">Nodes</div></div>
+        <div class="stat"><div class="stat-value" id="statEdges">0</div><div class="stat-label">Edges</div></div>
+        <div class="stat"><div class="stat-value" id="statDensity">0</div><div class="stat-label">Density</div></div>
+        <div class="stat"><div class="stat-value" id="statComponents">0</div><div class="stat-label">Components</div></div>
+      </div>
+    </div>
+    
+    <div class="sidebar-section">
+      <h3>Instructions</h3>
+      <div class="instructions">
+        <kbd>Click</kbd> canvas → add node<br>
+        <kbd>Drag</kbd> node → add edge<br>
+        In delete mode, <kbd>click</kbd> removes<br>
+        <br>
+        Nodes colored by Fiedler vector (blue → red gradient).
+      </div>
+    </div>
+  </div>
+  
+  <div class="canvas-wrap">
+    <canvas id="graph"></canvas>
+    
+    <div class="info-bar">
+      <div class="panel conservation-box">
+        <h4>Conservation Ratio</h4>
+        <div class="conservation-ratio" id="conservationRatio">—</div>
+        <div class="conservation-label" id="conservationDesc">λ₂ / λₙ — spectral gap indicator</div>
+        <div class="conservation-bar"><div class="conservation-fill" id="conservationFill"></div></div>
+      </div>
+      
+      <div class="panel">
+        <h4>Eigenvalues (λ)</h4>
+        <div class="eigen-list" id="eigenList"></div>
+      </div>
+      
+      <div class="panel">
+        <h4>Fiedler Vector (v₂)</h4>
+        <div class="fiedler-display" id="fiedlerDisplay"></div>
+      </div>
+    </div>
+    
+    <div class="mode-indicator">Mode: <span id="modeText">Node</span></div>
+    <div class="anim-indicator" id="animIndicator">⟳ Animating edge changes...</div>
+    <div class="tooltip" id="tooltip"></div>
+  </div>
+</div>
+
+<script>
+// ==================== STATE ====================
+let nodes = [];
+let edges = [];
+let mode = 'node'; // 'node', 'edge', 'delete'
+let dragging = null;
+let dragStart = null;
+let edgeSource = null;
+let mouseX = 0, mouseY = 0;
+let nextId = 0;
+let animating = false;
+let nodeRadius = 22;
+
+const canvas = document.getElementById('graph');
+const ctx = canvas.getContext('2d');
+const dpr = window.devicePixelRatio || 1;
+
+// ==================== RESIZE ====================
+function resize() {
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  draw();
+}
+window.addEventListener('resize', resize);
+
+// ==================== DRAWING ====================
+function draw() {
+  const w = canvas.width / dpr;
+  const h = canvas.height / dpr;
+  ctx.clearRect(0, 0, w, h);
+  
+  // Grid
+  ctx.strokeStyle = 'rgba(42,42,58,0.3)';
+  ctx.lineWidth = 0.5;
+  for (let x = 0; x < w; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); }
+  for (let y = 0; y < h; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
+  
+  // Drag line
+  if (edgeSource !== null) {
+    const src = nodes.find(n => n.id === edgeSource);
+    if (src) {
+      ctx.beginPath();
+      ctx.setLineDash([6, 4]);
+      ctx.strokeStyle = 'rgba(108,92,231,0.6)';
+      ctx.lineWidth = 2;
+      ctx.moveTo(src.x, src.y);
+      ctx.lineTo(mouseX, mouseY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+  
+  // Edges
+  edges.forEach(e => {
+    const a = nodes.find(n => n.id === e[0]);
+    const b = nodes.find(n => n.id === e[1]);
+    if (!a || !b) return;
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(108,92,231,0.5)';
+    ctx.lineWidth = 2;
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+    
+    // Edge midpoint weight hint
+    const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    ctx.fillStyle = 'rgba(42,42,58,0.6)';
+    ctx.beginPath();
+    ctx.arc(mx, my, 3, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  
+  // Nodes
+  const fiedler = computeFiedler();
+  const fMin = fiedler.length > 0 ? Math.min(...fiedler.map(f => f.v)) : 0;
+  const fMax = fiedler.length > 0 ? Math.max(...fiedler.map(f => f.v)) : 1;
+  
+  nodes.forEach((n, i) => {
+    const fEntry = fiedler.find(f => f.id === n.id);
+    const t = fMax > fMin ? (fEntry ? (fEntry.v - fMin) / (fMax - fMin) : 0.5) : 0.5;
+    const color = fiedlerColor(t);
+    
+    // Glow
+    const grad = ctx.createRadialGradient(n.x, n.y, nodeRadius * 0.5, n.x, n.y, nodeRadius * 2);
+    grad.addColorStop(0, color + '40');
+    grad.addColorStop(1, 'transparent');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, nodeRadius * 2, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Circle
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, nodeRadius, 0, Math.PI * 2);
+    ctx.fillStyle = color + '30';
+    ctx.fill();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    
+    // Label
+    ctx.fillStyle = '#fff';
+    ctx.font = '11px "SF Mono", "Fira Code", monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(n.label, n.x, n.y);
+  });
+  
+  updateInfo();
+}
+
+function fiedlerColor(t) {
+  // Blue (0) → Purple (0.5) → Red (1)
+  const r = Math.round(60 + t * 195);
+  const g = Math.round(80 - t * 40 + Math.sin(t * Math.PI) * 60);
+  const b = Math.round(220 - t * 180);
+  return `rgb(${r},${g},${b})`;
+}
+
+// ==================== INTERACTION ====================
+canvas.addEventListener('mousedown', e => {
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  mouseX = x; mouseY = y;
+  
+  const hit = hitNode(x, y);
+  
+  if (mode === 'delete') {
+    if (hit) {
+      nodes = nodes.filter(n => n.id !== hit.id);
+      edges = edges.filter(e => e[0] !== hit.id && e[1] !== hit.id);
+      draw();
+    } else {
+      // Try hit edge
+      const hitEdge = hitEdgeAt(x, y);
+      if (hitEdge !== null) {
+        edges.splice(hitEdge, 1);
+        draw();
+      }
+    }
+    return;
+  }
+  
+  if (mode === 'edge') {
+    if (hit) {
+      edgeSource = hit.id;
+      dragging = hit;
+    }
+    return;
+  }
+  
+  // Node mode
+  if (!hit) {
+    const label = String.fromCharCode(65 + (nextId % 26)) + (nextId >= 26 ? Math.floor(nextId / 26) : '');
+    nodes.push({ id: nextId, x, y, label });
+    nextId++;
+    draw();
+  }
+});
+
+canvas.addEventListener('mousemove', e => {
+  const rect = canvas.getBoundingClientRect();
+  mouseX = e.clientX - rect.left;
+  mouseY = e.clientY - rect.top;
+  
+  if (edgeSource !== null) {
+    draw();
+  }
+  
+  if (dragging && mode !== 'edge') {
+    dragging.x = mouseX;
+    dragging.y = mouseY;
+    draw();
+  }
+  
+  // Tooltip
+  const hit = hitNode(mouseX, mouseY);
+  const tip = document.getElementById('tooltip');
+  if (hit) {
+    const fiedler = computeFiedler();
+    const fEntry = fiedler.find(f => f.id === hit.id);
+    const deg = edges.filter(e => e[0] === hit.id || e[1] === hit.id).length;
+    tip.style.display = 'block';
+    tip.style.left = (mouseX + 16) + 'px';
+    tip.style.top = (mouseY - 10) + 'px';
+    tip.innerHTML = `<strong>${hit.label}</strong> | deg: ${deg}${fEntry ? ' | v₂: ' + fEntry.v.toFixed(3) : ''}`;
+  } else {
+    tip.style.display = 'none';
+  }
+});
+
+canvas.addEventListener('mouseup', e => {
+  if (edgeSource !== null) {
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const hit = hitNode(x, y);
+    
+    if (hit && hit.id !== edgeSource) {
+      const exists = edges.some(e => (e[0] === edgeSource && e[1] === hit.id) || (e[0] === hit.id && e[1] === edgeSource));
+      if (!exists) {
+        edges.push([edgeSource, hit.id]);
+      }
+    }
+    edgeSource = null;
+    dragging = null;
+    draw();
+    return;
+  }
+  dragging = null;
+});
+
+function hitNode(x, y) {
+  for (let i = nodes.length - 1; i >= 0; i--) {
+    const n = nodes[i];
+    if ((n.x - x) ** 2 + (n.y - y) ** 2 <= nodeRadius * nodeRadius) return n;
+  }
+  return null;
+}
+
+function hitEdgeAt(x, y) {
+  for (let i = 0; i < edges.length; i++) {
+    const a = nodes.find(n => n.id === edges[i][0]);
+    const b = nodes.find(n => n.id === edges[i][1]);
+    if (!a || !b) continue;
+    const dist = pointToSegmentDist(x, y, a.x, a.y, b.x, b.y);
+    if (dist < 8) return i;
+  }
+  return null;
+}
+
+function pointToSegmentDist(px, py, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  if (len2 === 0) return Math.hypot(px - ax, py - ay);
+  let t = ((px - ax) * dx + (py - ay) * dy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+
+function setMode(m) {
+  mode = m;
+  edgeSource = null;
+  document.getElementById('modeText').textContent = m.charAt(0).toUpperCase() + m.slice(1);
+  canvas.style.cursor = m === 'delete' ? 'not-allowed' : 'crosshair';
+}
+
+function clearGraph() {
+  nodes = []; edges = []; nextId = 0;
+  draw();
+}
+
+// ==================== LAPLACIAN & EIGEN ====================
+function buildAdjacency() {
+  const n = nodes.length;
+  const idx = {};
+  nodes.forEach((node, i) => idx[node.id] = i);
+  const A = Array.from({ length: n }, () => new Float64Array(n));
+  edges.forEach(([a, b]) => {
+    if (idx[a] !== undefined && idx[b] !== undefined) {
+      A[idx[a]][idx[b]] = 1;
+      A[idx[b]][idx[a]] = 1;
+    }
+  });
+  return A;
+}
+
+function buildLaplacian() {
+  const n = nodes.length;
+  const A = buildAdjacency();
+  const L = Array.from({ length: n }, () => new Float64Array(n));
+  for (let i = 0; i < n; i++) {
+    let deg = 0;
+    for (let j = 0; j < n; j++) deg += A[i][j];
+    L[i][i] = deg;
+    for (let j = 0; j < n; j++) {
+      if (i !== j) L[i][j] = -A[i][j];
+    }
+  }
+  return L;
+}
+
+// Jacobi eigenvalue algorithm for symmetric matrices
+function jacobiEigen(M, maxIter = 200, tol = 1e-10) {
+  const n = M.length;
+  if (n === 0) return { values: [], vectors: [] };
+  
+  // Copy matrix
+  const A = Array.from({ length: n }, (_, i) => Float64Array.from(M[i]));
+  const V = Array.from({ length: n }, (_, i) => {
+    const row = new Float64Array(n);
+    row[i] = 1;
+    return row;
+  });
+  
+  for (let iter = 0; iter < maxIter; iter++) {
+    // Find max off-diagonal
+    let maxVal = 0, p = 0, q = 1;
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        if (Math.abs(A[i][j]) > maxVal) {
+          maxVal = Math.abs(A[i][j]);
+          p = i; q = j;
+        }
+      }
+    }
+    if (maxVal < tol) break;
+    
+    // Compute rotation
+    const app = A[p][p], aqq = A[q][q], apq = A[p][q];
+    let theta;
+    if (Math.abs(app - aqq) < 1e-15) {
+      theta = Math.PI / 4;
+    } else {
+      theta = 0.5 * Math.atan2(2 * apq, app - aqq);
+    }
+    const c = Math.cos(theta), s = Math.sin(theta);
+    
+    // Apply rotation
+    for (let i = 0; i < n; i++) {
+      const vip = V[i][p], viq = V[i][q];
+      V[i][p] = c * vip + s * viq;
+      V[i][q] = -s * vip + c * viq;
+    }
+    
+    for (let i = 0; i < n; i++) {
+      const aip = A[i][p], aiq = A[i][q];
+      A[i][p] = c * aip + s * aiq;
+      A[i][q] = -s * aip + c * aiq;
+    }
+    for (let j = 0; j < n; j++) {
+      const apj = A[p][j], aqj = A[q][j];
+      A[p][j] = c * apj + s * aqj;
+      A[q][j] = -s * apj + c * aqj;
+    }
+  }
+  
+  // Extract eigenvalues and sort
+  const eigenPairs = [];
+  for (let i = 0; i < n; i++) {
+    const vec = [];
+    for (let j = 0; j < n; j++) vec.push(V[j][i]);
+    eigenPairs.push({ val: A[i][i], vec });
+  }
+  eigenPairs.sort((a, b) => a.val - b.val);
+  
+  return {
+    values: eigenPairs.map(p => p.val),
+    vectors: eigenPairs.map(p => p.vec)
+  };
+}
+
+// ==================== ANALYSIS ====================
+let cachedEigen = null;
+
+function computeSpectral() {
+  if (nodes.length < 2) return null;
+  const L = buildLaplacian();
+  cachedEigen = jacobiEigen(L);
+  return cachedEigen;
+}
+
+function computeFiedler() {
+  const result = computeSpectral();
+  if (!result || result.values.length < 2) return [];
+  const fiedlerVec = result.vectors[1];
+  return nodes.map((n, i) => ({ id: n.id, v: fiedlerVec[i] }));
+}
+
+function getConservationRatio() {
+  const result = computeSpectral();
+  if (!result || result.values.length < 2) return null;
+  const vals = result.values;
+  // Filter near-zero eigenvalues (disconnected components)
+  const nonzero = vals.filter(v => v > 1e-8);
+  if (nonzero.length < 2) return null;
+  const lambda2 = nonzero[0];
+  const lambdaN = nonzero[nonzero.length - 1];
+  if (lambdaN < 1e-10) return null;
+  return { ratio: lambda2 / lambdaN, lambda2, lambdaN, eigenvalues: vals };
+}
+
+function countComponents() {
+  if (nodes.length === 0) return 0;
+  const n = nodes.length;
+  const idx = {};
+  nodes.forEach((node, i) => idx[node.id] = i);
+  const visited = new Uint8Array(n);
+  let components = 0;
+  
+  function bfs(start) {
+    const queue = [start];
+    visited[start] = 1;
+    while (queue.length) {
+      const u = queue.shift();
+      const uid = nodes[u].id;
+      edges.forEach(([a, b]) => {
+        let neighbor = -1;
+        if (a === uid) neighbor = idx[b];
+        if (b === uid) neighbor = idx[a];
+        if (neighbor >= 0 && !visited[neighbor]) {
+          visited[neighbor] = 1;
+          queue.push(neighbor);
+        }
+      });
+    }
+  }
+  
+  for (let i = 0; i < n; i++) {
+    if (!visited[i]) { bfs(i); components++; }
+  }
+  return components;
+}
+
+// ==================== UI UPDATE ====================
+function updateInfo() {
+  // Stats
+  const n = nodes.length;
+  const m = edges.length;
+  const maxEdges = n * (n - 1) / 2;
+  const density = maxEdges > 0 ? (m / maxEdges) : 0;
+  document.getElementById('statNodes').textContent = n;
+  document.getElementById('statEdges').textContent = m;
+  document.getElementById('statDensity').textContent = density.toFixed(2);
+  document.getElementById('statComponents').textContent = countComponents();
+  
+  // Conservation
+  const cr = getConservationRatio();
+  const crEl = document.getElementById('conservationRatio');
+  const fillEl = document.getElementById('conservationFill');
+  const descEl = document.getElementById('conservationDesc');
+  
+  if (cr) {
+    const pct = (cr.ratio * 100).toFixed(1);
+    crEl.textContent = pct + '%';
+    crEl.style.color = cr.ratio > 0.5 ? 'var(--green)' : cr.ratio > 0.2 ? 'var(--yellow)' : 'var(--red)';
+    fillEl.style.width = pct + '%';
+    fillEl.style.background = cr.ratio > 0.5 ? 'var(--green)' : cr.ratio > 0.2 ? 'var(--yellow)' : 'var(--red)';
+    descEl.textContent = `λ₂=${cr.lambda2.toFixed(3)}  λₙ=${cr.lambdaN.toFixed(3)}`;
+  } else {
+    crEl.textContent = '—';
+    crEl.style.color = 'var(--text2)';
+    fillEl.style.width = '0%';
+    descEl.textContent = 'Add nodes and edges to begin';
+  }
+  
+  // Eigenvalues
+  const eigenEl = document.getElementById('eigenList');
+  if (cr) {
+    eigenEl.innerHTML = cr.eigenvalues.map((v, i) => {
+      const color = i === 1 ? 'var(--accent2)' : v < 1e-8 ? 'var(--text2)' : 'var(--text)';
+      const marker = i === 1 ? ' ← Fiedler' : (v < 1e-8 ? ' (zero)' : '');
+      return `<div class="eigen-row"><span class="eigen-idx">λ${i + 1}</span><span class="eigen-val" style="color:${color}">${v.toFixed(4)}${marker}</span></div>`;
+    }).join('');
+  } else {
+    eigenEl.innerHTML = '<div style="color:var(--text2);font-size:11px;">No data yet</div>';
+  }
+  
+  // Fiedler display
+  const fiedlerEl = document.getElementById('fiedlerDisplay');
+  const fiedler = computeFiedler();
+  if (fiedler.length > 0) {
+    const fMin = Math.min(...fiedler.map(f => f.v));
+    const fMax = Math.max(...fiedler.map(f => f.v));
+    fiedlerEl.innerHTML = fiedler.map(f => {
+      const node = nodes.find(n => n.id === f.id);
+      const t = fMax > fMin ? (f.v - fMin) / (fMax - fMin) : 0.5;
+      const bg = fiedlerColor(t);
+      return `<span class="fiedler-node" style="border:1px solid ${bg};color:${bg}">${node ? node.label : '?'}: ${f.v.toFixed(3)}</span>`;
+    }).join('');
+  } else {
+    fiedlerEl.innerHTML = '<div style="color:var(--text2);font-size:11px;">—</div>';
+  }
+}
+
+// ==================== PRESETS ====================
+function loadPreset(name) {
+  const size = parseInt(document.getElementById('sizeSelect').value);
+  clearGraph();
+  
+  const cx = (canvas.width / dpr) / 2;
+  const cy = (canvas.height / dpr) / 2;
+  const r = Math.min(cx, cy) * 0.55;
+  
+  function circularPositions(count) {
+    const positions = [];
+    for (let i = 0; i < count; i++) {
+      const angle = (2 * Math.PI * i / count) - Math.PI / 2;
+      positions.push({ x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) });
+    }
+    return positions;
+  }
+  
+  function addNodes(labels, positions) {
+    labels.forEach((label, i) => {
+      nodes.push({ id: nextId++, x: positions[i].x, y: positions[i].y, label });
+    });
+  }
+  
+  function addEdges(pairs) {
+    pairs.forEach(([a, b]) => edges.push([a, b]));
+  }
+  
+  switch (name) {
+    case 'complete': {
+      const labels = Array.from({ length: size }, (_, i) => String.fromCharCode(65 + i));
+      const pos = circularPositions(size);
+      addNodes(labels, pos);
+      for (let i = 0; i < size; i++)
+        for (let j = i + 1; j < size; j++)
+          edges.push([i, j]);
+      break;
+    }
+    case 'path': {
+      const labels = Array.from({ length: size }, (_, i) => String.fromCharCode(65 + i));
+      const pos = [];
+      const spacing = (r * 2) / (size - 1 || 1);
+      for (let i = 0; i < size; i++) pos.push({ x: cx - r + spacing * i, y: cy });
+      addNodes(labels, pos);
+      for (let i = 0; i < size - 1; i++) edges.push([i, i + 1]);
+      break;
+    }
+    case 'cycle': {
+      const labels = Array.from({ length: size }, (_, i) => String.fromCharCode(65 + i));
+      addNodes(labels, circularPositions(size));
+      for (let i = 0; i < size; i++) edges.push([i, (i + 1) % size]);
+      break;
+    }
+    case 'star': {
+      const labels = ['C', ...Array.from({ length: size - 1 }, (_, i) => String.fromCharCode(66 + i))];
+      const pos = [{ x: cx, y: cy }];
+      for (let i = 1; i < size; i++) {
+        const angle = (2 * Math.PI * (i - 1) / (size - 1)) - Math.PI / 2;
+        pos.push({ x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) });
+      }
+      addNodes(labels, pos);
+      for (let i = 1; i < size; i++) edges.push([0, i]);
+      break;
+    }
+    case 'barbell': {
+      const half = Math.floor(size / 2);
+      const labels = Array.from({ length: size }, (_, i) => String.fromCharCode(65 + i));
+      const pos = [];
+      const r2 = r * 0.5;
+      for (let i = 0; i < half; i++) {
+        const angle = (2 * Math.PI * i / half) - Math.PI / 2;
+        pos.push({ x: cx - r * 0.6 + r2 * Math.cos(angle), y: cy + r2 * Math.sin(angle) });
+      }
+      for (let i = 0; i < size - half; i++) {
+        const angle = (2 * Math.PI * i / (size - half)) - Math.PI / 2;
+        pos.push({ x: cx + r * 0.6 + r2 * Math.cos(angle), y: cy + r2 * Math.sin(angle) });
+      }
+      addNodes(labels, pos);
+      for (let i = 0; i < half; i++)
+        for (let j = i + 1; j < half; j++)
+          edges.push([i, j]);
+      for (let i = half; i < size; i++)
+        for (let j = i + 1; j < size; j++)
+          edges.push([i, j]);
+      edges.push([half - 1, half]);
+      break;
+    }
+    case 'grid': {
+      const side = Math.ceil(Math.sqrt(size));
+      const actual = side * side;
+      const labels = Array.from({ length: actual }, (_, i) => String.fromCharCode(65 + (i % 26)) + (i >= 26 ? Math.floor(i / 26) : ''));
+      const pos = [];
+      const sp = r * 2 / (side - 1 || 1);
+      for (let row = 0; row < side; row++)
+        for (let col = 0; col < side; col++)
+          pos.push({ x: cx - r + col * sp, y: cy - r + row * sp });
+      addNodes(labels, pos.slice(0, actual));
+      for (let row = 0; row < side; row++) {
+        for (let col = 0; col < side; col++) {
+          const idx = row * side + col;
+          if (idx >= actual) break;
+          if (col + 1 < side && idx + 1 < actual) edges.push([idx, idx + 1]);
+          if (row + 1 < side && idx + side < actual) edges.push([idx, idx + side]);
+        }
+      }
+      // Trim excess
+      while (nodes.length > size) { nodes.pop(); }
+      edges = edges.filter(e => e[0] < size && e[1] < size);
+      break;
+    }
+    case 'random': {
+      const labels = Array.from({ length: size }, (_, i) => String.fromCharCode(65 + i));
+      addNodes(labels, circularPositions(size));
+      const p = 0.4;
+      for (let i = 0; i < size; i++)
+        for (let j = i + 1; j < size; j++)
+          if (Math.random() < p) edges.push([i, j]);
+      // Ensure connected
+      for (let i = 0; i < size - 1; i++) {
+        if (!edges.some(e => (e[0] === i && e[1] === i + 1) || (e[0] === i + 1 && e[1] === i))) {
+          edges.push([i, i + 1]);
+        }
+      }
+      break;
+    }
+    case 'roman': {
+      const labels = ['Rome', 'Alex.', 'Carth.', 'Antioch', 'Ephesus', 'Byzan.', 'Lugd.', 'Lond.', 'Jerusalem'];
+      const pos = [
+        { x: cx - 40, y: cy - 20 }, { x: cx + 120, y: cy - 80 }, { x: cx - 80, y: cy + 60 },
+        { x: cx + 200, y: cy - 50 }, { x: cx + 160, y: cy + 10 }, { x: cx + 220, y: cy - 120 },
+        { x: cx - 180, y: cy + 100 }, { x: cx - 200, y: cy + 160 }, { x: cx + 240, y: cy + 30 }
+      ];
+      addNodes(labels, pos);
+      // Trade routes
+      addEdges([[0,1],[0,2],[0,3],[1,3],[1,4],[2,6],[3,4],[3,5],[4,8],[5,7],[6,7],[0,8],[1,8],[2,3]]);
+      break;
+    }
+    case 'jazz': {
+      const labels = ['Dm7', 'G7', 'Cmaj7', 'Am7', 'D7', 'Gm7', 'C7', 'Fmaj7', 'Em7', 'A7'];
+      const pos = circularPositions(10);
+      addNodes(labels, pos);
+      // ii-V-I and related voice leading
+      addEdges([[0,1],[1,2],[3,4],[4,5],[5,6],[6,7],[7,8],[8,9],[9,0],[2,3],[0,5],[1,6],[2,7],[3,8]]);
+      break;
+    }
+    case 'foodweb': {
+      const labels = ['Shark', 'Tuna', 'Seal', 'Squid', 'Mackerel', 'Herring', 'Zoo.', 'Phyto.', 'Krill'];
+      const pos = [
+        { x: cx, y: cy - r * 0.8 },
+        { x: cx - r * 0.6, y: cy - r * 0.3 },
+        { x: cx + r * 0.6, y: cy - r * 0.3 },
+        { x: cx - r * 0.4, y: cy + r * 0.1 },
+        { x: cx + r * 0.3, y: cy + r * 0.1 },
+        { x: cx - r * 0.1, y: cy + r * 0.4 },
+        { x: cx - r * 0.5, y: cy + r * 0.6 },
+        { x: cx + r * 0.3, y: cy + r * 0.7 },
+        { x: cx, y: cy + r * 0.5 }
+      ];
+      addNodes(labels, pos);
+      addEdges([[0,1],[0,2],[0,3],[1,3],[1,4],[2,0],[2,4],[3,5],[4,5],[5,6],[5,8],[6,7],[8,6],[8,7],[1,5]]);
+      break;
+    }
+    case 'criminal': {
+      const labels = ['Boss', 'Uboss A', 'Uboss B', 'Lieut 1', 'Lieut 2', 'Lieut 3', 'Soldier 1', 'Soldier 2', 'Soldier 3', 'Soldier 4'];
+      const pos = [
+        { x: cx, y: cy - r * 0.85 },
+        { x: cx - r * 0.5, y: cy - r * 0.4 },
+        { x: cx + r * 0.5, y: cy - r * 0.4 },
+        { x: cx - r * 0.7, y: cy + r * 0.1 },
+        { x: cx, y: cy + r * 0.1 },
+        { x: cx + r * 0.7, y: cy + r * 0.1 },
+        { x: cx - r * 0.8, y: cy + r * 0.6 },
+        { x: cx - r * 0.3, y: cy + r * 0.6 },
+        { x: cx + r * 0.3, y: cy + r * 0.6 },
+        { x: cx + r * 0.8, y: cy + r * 0.6 }
+      ];
+      addNodes(labels, pos);
+      addEdges([[0,1],[0,2],[1,3],[1,4],[2,4],[2,5],[3,6],[3,7],[4,7],[4,8],[5,8],[5,9],[6,7],[8,9]]);
+      break;
+    }
+  }
+  
+  draw();
+}
+
+document.getElementById('presetSelect').addEventListener('change', e => {
+  if (e.target.value) loadPreset(e.target.value);
+});
+
+document.getElementById('sizeSelect').addEventListener('change', () => {
+  const preset = document.getElementById('presetSelect').value;
+  if (preset && !['roman', 'jazz', 'foodweb', 'criminal'].includes(preset)) loadPreset(preset);
+});
+
+// ==================== ANIMATION ====================
+async function animateRandomEdge() {
+  if (nodes.length < 2 || animating) return;
+  animating = true;
+  const indicator = document.getElementById('animIndicator');
+  indicator.classList.add('active');
+  
+  const possibleEdges = [];
+  for (let i = 0; i < nodes.length; i++) {
+    for (let j = i + 1; j < nodes.length; j++) {
+      const exists = edges.some(e => (e[0] === nodes[i].id && e[1] === nodes[j].id) || (e[0] === nodes[j].id && e[1] === nodes[i].id));
+      if (!exists) possibleEdges.push([nodes[i].id, nodes[j].id]);
+    }
+  }
+  
+  // Add edges one by one
+  const shuffled = possibleEdges.sort(() => Math.random() - 0.5);
+  const toAdd = shuffled.slice(0, Math.min(8, shuffled.length));
+  
+  for (const edge of toAdd) {
+    edges.push(edge);
+    draw();
+    await new Promise(r => setTimeout(r, 500));
+  }
+  
+  // Then remove them
+  for (const edge of toAdd) {
+    const idx = edges.findIndex(e => (e[0] === edge[0] && e[1] === edge[1]) || (e[0] === edge[1] && e[1] === edge[0]));
+    if (idx >= 0) {
+      edges.splice(idx, 1);
+      draw();
+      await new Promise(r => setTimeout(r, 400));
+    }
+  }
+  
+  animating = false;
+  indicator.classList.remove('active');
+}
+
+// ==================== INIT ====================
+setTimeout(() => {
+  resize();
+  // Start with a nice default
+  loadPreset('cycle');
+  document.getElementById('presetSelect').value = 'cycle';
+}, 100);
+</script>
+
+</body>
+</html>
