@@ -41,3 +41,5 @@ The **Fiedler vector** (eigenvector of λ₂, the algebraic connectivity) reveal
 ---
 
 *Part of the [SuperInstance](https://superinstance.ai) research on conservation spectral analysis.*
+
+Part of the [SuperInstance OpenConstruct](https://github.com/SuperInstance/OpenConstruct) ecosystem.
